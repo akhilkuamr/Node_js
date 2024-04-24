@@ -1,10 +1,19 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
+const multer = require("multer");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
+const msal = require("@azure/msal-node");
 const cors = require("cors");
-const { Customer } = require("./Customer_models"); // Assuming your model is named Customer
+const { Customer } = require("./models/Customer_models");
+const { Employee } = require("./models/Employee_model");
+const { Google } = require("./models/google_models");
+const { Skill } = require("./models/skill_model");
+const { Skillmatrix } = require("./models/skill_matrix");
+const { roles } = require("./models/roles_model");
+const { menu } = require("./models/menu_model");
+const { Action } = require("./models/action_model");
 const app = express();
 
 app.use(bodyParser.json());
@@ -16,6 +25,16 @@ const corsOptions = {
 };
 app.options("*", cors());
 app.use(cors(corsOptions));
+const storage = multer.diskStorage({
+  destination: (req, file, callback) => {
+    callback(null, "uploads");
+  },
+  filename: (req, file, callBack) => {
+    callBack(null, `FunOfHeuristic_${file.originalname}`);
+  },
+});
+
+var upload = multer({ storage: storage });
 
 function verifyToken(req, res, next) {
   if (!req.headers.authorization) {
@@ -43,15 +62,14 @@ app.get("/customers", async (req, res) => {
   }
 });
 
-app.get("/fetch", async (req, res) => {
+app.get("/fetchdata", async (req, res) => {
+  const userId = req.query.param1;
   try {
-    const username = res.Email;
-    const data = await Customer.findOne({ Email: username });
-
+    const data = await Customer.findOne({ Email: userId });
     if (!data) {
       return res.status(404).json({ message: "Data not found" });
     }
-    res.json(data);
+    return res.status(200).json(data);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
@@ -60,26 +78,31 @@ app.get("/fetch", async (req, res) => {
 
 app.post("/customers", async (req, res) => {
   try {
-    // Hash the password using bcrypt
     const hashedPassword = await bcrypt.hash(req.body.password, 10);
-
-    // Create a new Customer instance with the hashed password
     const newCustomer = new Customer({
       ...req.body,
       password: hashedPassword,
     });
-
-    // Save the newCustomer to the database
     const insertedCustomer = await newCustomer.save();
-
-    // Create a JWT token
     const payload = { subject: newCustomer._id };
-    const token = jwt.sign(payload, "secretKey");
-
+    const token = jwt.sign(payload, "secretKey", { expiresIn: "1hr" });
     return res.status(201).send({ token });
   } catch (error) {
     console.error("Error creating a new customer:", error);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.post("/google", async (req, res) => {
+  try {
+    const newGoogle = new Google({
+      ...req.body,
+    });
+    const insertedCustomer = await newGoogle.save();
+    return res.status(201);
+  } catch (error) {
+    console.error("Error creating a new customer:", error);
+    //return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -92,20 +115,16 @@ app.post("/login", async (req, res) => {
     if (!customer) {
       res.status(401).send("Invalid email");
     } else {
-      // Compare the provided password with the hashed password in the database
       const passwordMatch = await bcrypt.compare(
         userData.password,
         customer.password
       );
-
       if (!passwordMatch) {
-        // alert("Invalid Username and Password!! please check try again");
         res.status(401).send("Invalid password");
       } else {
-        // Passwords match, create a JWT token
         let payload = { subject: customer._id };
         let token = jwt.sign(payload, "secretKey");
-        res.status(200).send({ token }); // Assuming you want to send the customer data on successful login
+        res.status(200).send({ token });
       }
     }
   } catch (error) {
@@ -114,12 +133,66 @@ app.post("/login", async (req, res) => {
   }
 });
 
-app.put("/customers/:id", async (req, res) => {
+app.post("/login2", async (req, res) => {
+  let userData = req.body;
+  //console.log("137", userData);
+  const msalConfig = {
+    auth: {
+      clientId: "7cf093ac-4845-4158-b9ee-3c3bc5f9dff9",
+      //client_secret: "4c8d7f27-43d4-4db6-812c-ccd404b1d546",
+      authority:
+        "https://login.microsoftonline.com/36b2f884-33d8-4af6-826f-434a33d002f9",
+    },
+    system: {
+      loggerOptions: {
+        loggerCallback(loglevel, message, containsPii) {
+          //console.log(message);
+        },
+        piiLoggingEnabled: false,
+        logLevel: msal.LogLevel.Verbose,
+      },
+    },
+  };
+
+  const pca = new msal.PublicClientApplication(msalConfig);
+  const msalTokenCache = pca.getTokenCache();
+  //console.log("164");
+  const tokenCalls = async () => {
+    async function getAccounts() {
+      return await msalTokenCache.getAllAccounts();
+    }
+
+    accounts = await getAccounts();
+    const usernamePasswordRequest = {
+      scopes: [""],
+      username: req.body.Email, // Add your username here
+      password: req.body.password, // Add your password here
+    };
+
+    pca
+      .acquireTokenByUsernamePassword(usernamePasswordRequest)
+      .then((response) => {
+        //console.log("acquired token by password grant", response);
+        res.json(response);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
+  };
+  tokenCalls();
+});
+
+app.put("/customers/update", async (req, res) => {
   try {
-    const { id } = req.params;
-    await Customer.updateOne({ _id: id }, req.body);
-    const updatedCustomer = await Customer.findById(id);
-    return res.status(200).json(updatedCustomer);
+    const userId = req.query.param1;
+    const newData = req.body;
+    //await Customer.findByIdAndUpdate({ Email: id }, req.body);
+    const updatedCustomer = await Customer.updateOne(
+      { Email: userId },
+      newData
+    );
+    const data = await Customer.find({ Email: userId });
+    return res.status(200).json(data);
   } catch (error) {
     console.error("Error updating customer by ID:", error);
     return res.status(500).json({ error: "Internal Server Error" });
@@ -140,40 +213,106 @@ app.delete("/customers/:id", async (req, res) => {
   }
 });
 
-app.get("/event", verifyToken, async (req, res) => {
-  let events = [
-    {
-      id: "1",
-      name: "Auto Expo",
-      description: "lorem ipsum",
-      date: "2024-01-20T18:43:511Z",
-    },
-    {
-      id: "2",
-      name: "Auto Expo",
-      description: "lorem ipsum",
-      date: "2024-01-20T18:43:511Z",
-    },
-    {
-      id: "3",
-      name: "Auto Expo",
-      description: "lorem ipsum",
-      date: "2024-01-20T18:43:511Z",
-    },
-    {
-      id: "4",
-      name: "Auto Expo",
-      description: "lorem ipsum",
-      date: "2024-01-20T18:43:511Z",
-    },
-    {
-      id: "5",
-      name: "Auto Expo",
-      description: "lorem ipsum",
-      date: "2024-01-20T18:43:511Z",
-    },
-  ];
-  res.json(events);
+app.post("/fetch", async (req, res) => {
+  const userdata = req.body;
+  try {
+    const user = await Employee.findOne({ Email: userdata.Email });
+    if (!user) {
+      return res.status(401).json({ message: "Invalid username or password" });
+    }
+    if (user.Password === userdata.password) {
+      return res.status(200).json({ message: "Login successful" });
+    } else {
+      return res.status(401).json({ message: "Invalid username or password" });
+    }
+  } catch (error) {
+    console.error("Error during login:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// -------------------------------------------
+
+app.post("/skill", async (req, res) => {
+  try {
+    const newSkill = new Skill({
+      ...req.body,
+    });
+    const insertedCustomer = await newSkill.save();
+    const data = await Skill.find();
+    if (!data) {
+      return res.status(404).json({ message: "Data not found" });
+    }
+    return res.status(200).json(data);
+    //return res.status(200).send("Data inserted successfully");
+  } catch (error) {
+    console.error("Error creating a new customer:", error);
+  }
+});
+
+app.get("/skillmatrix", async (req, res) => {
+  try {
+    const allskills = await Skill.find();
+    return res.status(200).json(allskills);
+  } catch (error) {
+    console.error("Error fetching all customers:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.post("/skillmatrix1", async (req, res) => {
+  try {
+    const newSkill = new Skillmatrix({
+      ...req.body,
+    });
+    const insertedCustomer = await newSkill.save();
+    const data = await Skillmatrix.find({ user_id: insertedCustomer.user_id });
+    if (!data) {
+      return res.status(404).json({ message: "Data not found" });
+    }
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("Error creating a new customer:", error);
+  }
+});
+
+app.get("/skillmatrix/getdata", async (req, res) => {
+  const userId = req.query.param1;
+  try {
+    const data = await Skillmatrix.find({ user_id: userId });
+    if (!data) {
+      return res.status(404).json({ message: "Data not found" });
+    }
+    //console.log(data);
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.post("/file", upload.single("file"), (req, res) => {
+  res.send("File uploaded successfully.");
+});
+
+app.get("/roles", async (req, res) => {
+  try {
+    const allroles = await roles.find();
+    return res.status(200).json(allroles);
+  } catch (error) {
+    console.error("Error fetching all customers:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.get("/menu", async (req, res) => {
+  try {
+    const allroles = await menu.find();
+    return res.status(200).json(allroles);
+  } catch (error) {
+    console.error("Error fetching all customers:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
 const start = async () => {
@@ -187,3 +326,5 @@ const start = async () => {
 };
 
 start();
+
+module.exports = app;
