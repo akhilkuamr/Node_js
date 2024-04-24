@@ -2,9 +2,13 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const multer = require("multer");
+
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const msal = require("@azure/msal-node");
+const BSON = require("bson");
+const path = require("path");
+
 const cors = require("cors");
 const { Customer } = require("./models/Customer_models");
 const { Employee } = require("./models/Employee_model");
@@ -14,8 +18,9 @@ const { Skillmatrix } = require("./models/skill_matrix");
 const { roles } = require("./models/roles_model");
 const { menu } = require("./models/menu_model");
 const { Action } = require("./models/action_model");
+const { records } = require("./models/record_model");
+const fs = require("fs");
 const app = express();
-
 app.use(bodyParser.json());
 app.use(express.json());
 const corsOptions = {
@@ -27,14 +32,19 @@ app.options("*", cors());
 app.use(cors(corsOptions));
 const storage = multer.diskStorage({
   destination: (req, file, callback) => {
-    callback(null, "uploads");
+    callback(null, "uploads/");
   },
   filename: (req, file, callBack) => {
-    callBack(null, `FunOfHeuristic_${file.originalname}`);
+    let ext = path.extname(file.originalname);
+    callBack(null, Date.now() + ext);
   },
 });
 
-var upload = multer({ storage: storage });
+var upload = multer({ storage: storage }).fields([
+  { name: "file1", maxCount: 1 },
+  { name: "file2", maxCount: 1 },
+  { name: "file3", maxCount: 1 },
+]);
 
 function verifyToken(req, res, next) {
   if (!req.headers.authorization) {
@@ -135,11 +145,9 @@ app.post("/login", async (req, res) => {
 
 app.post("/login2", async (req, res) => {
   let userData = req.body;
-  //console.log("137", userData);
   const msalConfig = {
     auth: {
       clientId: "7cf093ac-4845-4158-b9ee-3c3bc5f9dff9",
-      //client_secret: "4c8d7f27-43d4-4db6-812c-ccd404b1d546",
       authority:
         "https://login.microsoftonline.com/36b2f884-33d8-4af6-826f-434a33d002f9",
     },
@@ -156,7 +164,6 @@ app.post("/login2", async (req, res) => {
 
   const pca = new msal.PublicClientApplication(msalConfig);
   const msalTokenCache = pca.getTokenCache();
-  //console.log("164");
   const tokenCalls = async () => {
     async function getAccounts() {
       return await msalTokenCache.getAllAccounts();
@@ -171,9 +178,23 @@ app.post("/login2", async (req, res) => {
 
     pca
       .acquireTokenByUsernamePassword(usernamePasswordRequest)
-      .then((response) => {
-        //console.log("acquired token by password grant", response);
-        res.json(response);
+      .then(async (response) => {
+        //res.json(response);
+        if (response.accessToken) {
+          const customer = await Customer.findOne({ Email: response.username });
+          if (!customer) {
+            res.json(response);
+          } else {
+            const newCustomer = new Customer({
+              First_name: response.name,
+              Email: response.username,
+            });
+            const insertedCustomer = await newCustomer.save();
+            res.json("User Inserted");
+          }
+        } else {
+          res.status(401).json("Invaild credentials");
+        }
       })
       .catch((error) => {
         console.log(error);
@@ -230,8 +251,6 @@ app.post("/fetch", async (req, res) => {
     return res.status(500).json({ message: "Internal Server Error" });
   }
 });
-
-// -------------------------------------------
 
 app.post("/skill", async (req, res) => {
   try {
@@ -291,8 +310,31 @@ app.get("/skillmatrix/getdata", async (req, res) => {
   }
 });
 
-app.post("/file", upload.single("file"), (req, res) => {
-  res.send("File uploaded successfully.");
+app.post("/upload", async (req, res) => {
+  try {
+    const filenames = [];
+    for (const key in req.files) {
+      filenames.push(req.files[key][0].filename);
+    }
+
+    console.log(filenames);
+    // const { originalname, filename, mimetype, size } = req.file;
+
+    // const newRecord = new records({
+    //   file_name: originalname,
+    //   file_size: size,
+    //   file_type: mimetype,
+    //   filedata: req.file.path,
+    //   last_updated: new Date(),
+    // });
+
+    // await newRecord.save();
+
+    res.status(201).json({ message: "File uploaded successfully" });
+  } catch (error) {
+    console.error("Error uploading file:", error);
+    res.status(500).json({ error: "Error uploading file" });
+  }
 });
 
 app.get("/roles", async (req, res) => {
@@ -301,6 +343,26 @@ app.get("/roles", async (req, res) => {
     return res.status(200).json(allroles);
   } catch (error) {
     console.error("Error fetching all customers:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.post("/update/roles", async (req, res) => {
+  const role = req.query.param1;
+  const arr1 = req.body; // Extract data from request body
+
+  try {
+    const allroles = await roles.findOneAndUpdate(
+      { role_name: role },
+      {
+        display_menu: arr1,
+      }
+    );
+    await allroles.save();
+    //console.log("Roles created:", newRoles);
+    return res.status(200).json(allroles); // Return the created roles
+  } catch (error) {
+    console.error("Error creating roles:", error);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -317,7 +379,8 @@ app.get("/menu", async (req, res) => {
 
 const start = async () => {
   try {
-    await mongoose.connect("mongodb://localhost:27017/mydb");
+    client = await mongoose.connect("mongodb://localhost:27017/mydb");
+
     app.listen(3000, () => console.log("Server started on port 3000"));
   } catch (error) {
     console.error("Error connecting to the database:", error);
