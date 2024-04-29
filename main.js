@@ -36,15 +36,11 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, callBack) => {
     let ext = path.extname(file.originalname);
-    callBack(null, Date.now() + ext);
+    callBack(null, Date.now() + "-" + ext);
   },
 });
 
-var upload = multer({ storage: storage }).fields([
-  { name: "file1", maxCount: 1 },
-  { name: "file2", maxCount: 1 },
-  { name: "file3", maxCount: 1 },
-]);
+var upload = multer({ storage: storage });
 
 function verifyToken(req, res, next) {
   if (!req.headers.authorization) {
@@ -310,31 +306,38 @@ app.get("/skillmatrix/getdata", async (req, res) => {
   }
 });
 
-app.post("/upload", async (req, res) => {
+app.post("/upload", upload.array("files"), async (req, res, next) => {
   try {
-    const filenames = [];
-    for (const key in req.files) {
-      filenames.push(req.files[key][0].filename);
-    }
-
-    console.log(filenames);
-    // const { originalname, filename, mimetype, size } = req.file;
-
-    // const newRecord = new records({
-    //   file_name: originalname,
-    //   file_size: size,
-    //   file_type: mimetype,
-    //   filedata: req.file.path,
-    //   last_updated: new Date(),
-    // });
-
-    // await newRecord.save();
-
-    res.status(201).json({ message: "File uploaded successfully" });
+    const files = req.files;
+    var filenames = [];
+    await files.forEach((file) => {
+      const { originalname, mimetype, size, path } = file;
+      const newRecord = new records({
+        file_name: originalname,
+        file_size: size,
+        file_type: mimetype,
+        filedata: path,
+        last_updated: new Date(),
+      });
+      newRecord.save();
+      filenames.push(originalname);
+    });
+    res.status(200).json({ message: "Files uploaded successfully", filenames });
   } catch (error) {
     console.error("Error uploading file:", error);
     res.status(500).json({ error: "Error uploading file" });
   }
+});
+
+app.get("/files", (req, res) => {
+  // Read the directory where files are stored
+  const directoryPath = path.join(__dirname, "uploads");
+  fs.readdir(directoryPath, (err, files) => {
+    if (err) {
+      return res.status(500).send("Error reading directory");
+    }
+    res.json(files);
+  });
 });
 
 app.get("/roles", async (req, res) => {

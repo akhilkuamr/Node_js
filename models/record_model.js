@@ -10,8 +10,6 @@ const recordSchema = new mongoose.Schema({
     type: String,
   },
   filedata: {
-    // data: Buffer,
-    // contentType: String,
     type: String,
   },
   last_updated: {
