@@ -23,6 +23,7 @@ const fs = require("fs");
 const app = express();
 app.use(bodyParser.json());
 app.use(express.json());
+app.use("/images", express.static("uploads"));
 const corsOptions = {
   origin: "http://localhost:4200",
   credentials: true,
@@ -309,10 +310,13 @@ app.get("/skillmatrix/getdata", async (req, res) => {
 app.post("/upload", upload.array("files"), async (req, res, next) => {
   try {
     const files = req.files;
+    const id = req.query.param1;
     var filenames = [];
+    console.log(id);
     await files.forEach((file) => {
       const { originalname, mimetype, size, path } = file;
       const newRecord = new records({
+        Id: id,
         file_name: originalname,
         file_size: size,
         file_type: mimetype,

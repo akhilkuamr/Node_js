@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
 const recordSchema = new mongoose.Schema({
+  Id: {
+    type: String,
+  },
   file_name: {
     type: String,
   },
