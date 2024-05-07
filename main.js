@@ -312,7 +312,6 @@ app.post("/upload", upload.array("files"), async (req, res, next) => {
     const files = req.files;
     const id = req.query.param1;
     var filenames = [];
-    console.log(id);
     await files.forEach((file) => {
       const { originalname, mimetype, size, path } = file;
       const newRecord = new records({
