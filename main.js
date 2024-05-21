@@ -1,6 +1,6 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
+// const bcrypt = require("bcrypt");
 const multer = require("multer");
 
 const mongoose = require("mongoose");
@@ -113,32 +113,32 @@ app.post("/google", async (req, res) => {
   }
 });
 
-app.post("/login", async (req, res) => {
-  let userData = req.body;
+// app.post("/login", async (req, res) => {
+//   let userData = req.body;
 
-  try {
-    const customer = await Customer.findOne({ Email: userData.Email });
+//   try {
+//     const customer = await Customer.findOne({ Email: userData.Email });
 
-    if (!customer) {
-      res.status(401).send("Invalid email");
-    } else {
-      const passwordMatch = await bcrypt.compare(
-        userData.password,
-        customer.password
-      );
-      if (!passwordMatch) {
-        res.status(401).send("Invalid password");
-      } else {
-        let payload = { subject: customer._id };
-        let token = jwt.sign(payload, "secretKey");
-        res.status(200).send({ token });
-      }
-    }
-  } catch (error) {
-    console.log(error);
-    res.status(500).send("Internal Server Error");
-  }
-});
+//     if (!customer) {
+//       res.status(401).send("Invalid email");
+//     } else {
+//       const passwordMatch = await bcrypt.compare(
+//         userData.password,
+//         customer.password
+//       );
+//       if (!passwordMatch) {
+//         res.status(401).send("Invalid password");
+//       } else {
+//         let payload = { subject: customer._id };
+//         let token = jwt.sign(payload, "secretKey");
+//         res.status(200).send({ token });
+//       }
+//     }
+//   } catch (error) {
+//     console.log(error);
+//     res.status(500).send("Internal Server Error");
+//   }
+// });
 
 app.post("/login2", async (req, res) => {
   let userData = req.body;
