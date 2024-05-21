@@ -150,9 +150,7 @@ app.post("/login2", async (req, res) => {
     },
     system: {
       loggerOptions: {
-        loggerCallback(loglevel, message, containsPii) {
-          //console.log(message);
-        },
+        loggerCallback(loglevel, message, containsPii) {},
         piiLoggingEnabled: false,
         logLevel: msal.LogLevel.Verbose,
       },
@@ -161,7 +159,7 @@ app.post("/login2", async (req, res) => {
 
   const pca = new msal.PublicClientApplication(msalConfig);
   const msalTokenCache = pca.getTokenCache();
-  const tokenCalls = async () => {
+  try {
     async function getAccounts() {
       return await msalTokenCache.getAllAccounts();
     }
@@ -169,35 +167,33 @@ app.post("/login2", async (req, res) => {
     accounts = await getAccounts();
     const usernamePasswordRequest = {
       scopes: [""],
-      username: req.body.Email, // Add your username here
-      password: req.body.password, // Add your password here
+      username: req.body.Email,
+      password: req.body.password,
     };
 
-    pca
-      .acquireTokenByUsernamePassword(usernamePasswordRequest)
-      .then(async (response) => {
-        //res.json(response);
-        if (response.accessToken) {
-          const customer = await Customer.findOne({ Email: response.username });
-          if (!customer) {
-            res.json(response);
-          } else {
-            const newCustomer = new Customer({
-              First_name: response.name,
-              Email: response.username,
-            });
-            const insertedCustomer = await newCustomer.save();
-            res.json("User Inserted");
-          }
-        } else {
-          res.status(401).json("Invaild credentials");
-        }
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-  };
-  tokenCalls();
+    const response = await pca.acquireTokenByUsernamePassword(
+      usernamePasswordRequest
+    );
+
+    if (response.accessToken) {
+      const customer = await Customer.findOne({ Email: response.username });
+      if (!customer) {
+        res.status(201).json(response); // User exists in Azure AD but not in your system
+      } else {
+        const newCustomer = new Customer({
+          First_name: response.name,
+          Email: response.username,
+        });
+        const insertedCustomer = await newCustomer.save();
+        res.status(200).json("User Inserted"); // User exists in Azure AD and inserted into your system
+      }
+    } else {
+      res.status(400).json("Invalid credentials"); // Invalid credentials provided
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(400).json("Login Failed"); // Other errors such as server error or network issues
+  }
 });
 
 app.put("/customers/update", async (req, res) => {
@@ -292,6 +288,32 @@ app.post("/skillmatrix1", async (req, res) => {
   }
 });
 
+app.delete("/skillmatrix/delete", async (req, res) => {
+  try {
+    const userId = req.query.param1;
+    const skillName = req.query.skillName;
+
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is missing or invalid" });
+    }
+    const result = await Skillmatrix.deleteOne({
+      user_id: userId,
+      skill_name: skillName,
+    });
+    if (result.deletedCount === 1) {
+      return res
+        .status(200)
+        .json({ message: "Successfully deleted one document." });
+    } else {
+      return res.status(400).json({
+        message: "No documents matched the query. Deleted 0 documents.",
+      });
+    }
+  } catch (error) {
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 app.get("/skillmatrix/getdata", async (req, res) => {
   const userId = req.query.param1;
   try {
@@ -307,9 +329,35 @@ app.get("/skillmatrix/getdata", async (req, res) => {
   }
 });
 
+app.delete("/skill/delete", async (req, res) => {
+  try {
+    const skillid = req.query.param1;
+    const skillName = req.query.skillName;
+    console.log(skillName, "337");
+    if (!skillName) {
+      return res.status(400).json({ error: "User ID is missing or invalid" });
+    }
+    const result = await Skill.deleteOne({
+      id: skillid,
+      skill_name: skillName,
+    });
+    if (result.deletedCount === 1) {
+      return res
+        .status(200)
+        .json({ message: "Successfully deleted one document." });
+    } else {
+      return res.status(400).json({
+        message: "No documents matched the query. Deleted 0 documents.",
+      });
+    }
+  } catch (error) {
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 app.post("/upload", upload.array("files"), async (req, res, next) => {
   try {
-    const files = req.files;
+    files = req.files;
     const id = req.query.param1;
     var filenames = [];
     await files.forEach((file) => {
@@ -324,8 +372,9 @@ app.post("/upload", upload.array("files"), async (req, res, next) => {
       });
       newRecord.save();
       filenames.push(originalname);
+      filenames.push(file);
     });
-    res.status(200).json({ message: "Files uploaded successfully", filenames });
+    res.status(200).json({ message: "Files uploaded successfully", files });
   } catch (error) {
     console.error("Error uploading file:", error);
     res.status(500).json({ error: "Error uploading file" });
@@ -333,8 +382,9 @@ app.post("/upload", upload.array("files"), async (req, res, next) => {
 });
 
 app.get("/files", (req, res) => {
-  // Read the directory where files are stored
+  console.log(res);
   const directoryPath = path.join(__dirname, "uploads");
+  //console.log(directoryPath, "340");
   fs.readdir(directoryPath, (err, files) => {
     if (err) {
       return res.status(500).send("Error reading directory");
