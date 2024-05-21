@@ -25,7 +25,7 @@ app.use(bodyParser.json());
 app.use(express.json());
 app.use("/images", express.static("uploads"));
 const corsOptions = {
-  origin: "http://localhost:4200",
+  origin: "http://e-arena.mind-pros.com",
   credentials: true,
   optionSuccessStatus: 200,
 };
