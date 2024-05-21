@@ -83,22 +83,22 @@ app.get("/fetchdata", async (req, res) => {
   }
 });
 
-app.post("/customers", async (req, res) => {
-  try {
-    const hashedPassword = await bcrypt.hash(req.body.password, 10);
-    const newCustomer = new Customer({
-      ...req.body,
-      password: hashedPassword,
-    });
-    const insertedCustomer = await newCustomer.save();
-    const payload = { subject: newCustomer._id };
-    const token = jwt.sign(payload, "secretKey", { expiresIn: "1hr" });
-    return res.status(201).send({ token });
-  } catch (error) {
-    console.error("Error creating a new customer:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+// app.post("/customers", async (req, res) => {
+//   try {
+//     // const hashedPassword = await bcrypt.hash(req.body.password, 10);
+//     const newCustomer = new Customer({
+//       ...req.body,
+//       password: hashedPassword,
+//     });
+//     const insertedCustomer = await newCustomer.save();
+//     const payload = { subject: newCustomer._id };
+//     const token = jwt.sign(payload, "secretKey", { expiresIn: "1hr" });
+//     return res.status(201).send({ token });
+//   } catch (error) {
+//     console.error("Error creating a new customer:", error);
+//     return res.status(500).json({ error: "Internal Server Error" });
+//   }
+// });
 
 app.post("/google", async (req, res) => {
   try {
